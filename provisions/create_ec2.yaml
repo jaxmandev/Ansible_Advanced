@@ -1,0 +1,40 @@
+---
+- name: Create a new EC2
+  hosts: local
+  connection: local
+  gather_facts: true
+  become: true
+
+  tasks:
+    - name: Installing dependencies
+      apt:
+        name:
+          - python3
+          - python3-pip
+        state: present
+    - name: Installing pip dependencies
+      pip:
+        name:
+          - boto
+          - boto3
+          - nose
+          - tornado
+          - awscli
+        state: present
+    - name: Start an instance
+      amazon.aws.ec2:
+        aws_secret_key: "{{ aws_secret_key }}"
+        aws_access_key: "{{ aws_access_key }}"
+        key_name: eng74.hubert.aws.key
+        instance_type: t2.micro
+        image: ami-0dc8d444ee2a42d8a
+        region: eu-west-1
+        wait: True
+        assign_public_ip: yes
+        count: 1
+        id: "Hubert EC2 with yaml"
+        instance_tags:
+          Name: eng74-hubert-ansible-yaml
+        group_id: sg-041ca396643d159d5
+        vpc_subnet_id: subnet-00ac052b1e40c0164
+      register: ec2

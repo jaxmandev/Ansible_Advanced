@@ -1,0 +1,90 @@
+---
+- name: App Installation and Initialisation
+  hosts: app
+  gather_facts: yes
+  become: true
+
+  vars:
+    # This is where the NodeJS app files are stored on the Controller machine
+    app_location: "server_files"
+    # This is where the NodeJS app files are stored on the Host machine
+    app_destination: "NodeJS_App"
+    # This is the Private IP address of the database machine
+    database_address: "172.31.42.113"
+
+  tasks:
+    - synchronize:
+        src: "/home/ubuntu/{{ app_location }}/"
+        dest: "/home/ubuntu/{{ app_destination }}/"
+    - name: Getting Public IP
+      command: "curl ifconfig.me"
+      register: host_ip
+    - name: Running APT Update && Upgrade
+      apt:
+        upgrade: "yes"
+        update_cache: yes
+        force_apt_get: yes
+        cache_valid_time: 3600
+    - name: Ensuring GIT is installed
+      apt:
+        name: git
+        state: present
+    - name: Ensuring software-properties-common is installed
+      apt:
+        name: software-properties-common
+        state: present
+    - name: Adding the nodejs repository
+      shell: "curl -sL https://deb.nodesource.com/setup_12.x | sudo -E bash -"
+    - name: Ensuring nodejs is installed
+      apt:
+        name: nodejs
+        state: present
+    - name: Ensuring nginx is installed
+      apt:
+        name: nginx
+        state: present
+    - name: Ensuring nginx is started
+      service:
+        name: nginx
+        state: started
+    - name: Ensuring pm2 is installed
+      community.general.npm:
+        name: pm2
+        global: yes
+    - name: Copying config file for nginx
+      copy:
+        src: "/home/ubuntu/{{ app_destination }}/config_files/nginx.conf"
+        dest: /etc/nginx/
+        remote_src: yes
+    - name: Ensuring public IP is current
+      lineinfile:
+        path: /etc/nginx/nginx.conf
+        regexp: "^(.*)server_name(.*)$"
+        line: "server_name {{ host_ip.stdout }};"
+        backrefs: yes
+    - name: Ensuring private IP is current
+      lineinfile:
+        path: /etc/nginx/nginx.conf
+        regexp: "^(.*)proxy_pass(.*)$"
+        line: "proxy_pass http://{{ ansible_default_ipv4.address }}:3000/;"
+    - name: Restarting nginx to load new config file
+      service:
+        name: nginx
+        state: restarted
+    - name: Stopping app.js if its running
+      shell: "pm2 delete app"
+      ignore_errors: yes
+      become: true
+      become_user: ubuntu
+    - name: Running npm install for any new dependencies
+      community.general.npm:
+        name: install
+        path: "/home/ubuntu/{{ app_destination }}/app/"
+    - name: Starting app.js
+      command:
+        cmd: pm2 start app.js --update-env
+        chdir: "/home/ubuntu/{{ app_destination }}/app/"
+      become: true
+      become_user: ubuntu
+      environment:
+        DB_HOST: "{{ database_address }}"

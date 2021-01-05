@@ -1,0 +1,44 @@
+---
+- name: Database Installation and Initialisation
+  hosts: db
+  gather_facts: yes
+  become: true
+
+  vars:
+    app_location: "server_files"
+    app_destination: "NodeJS_App"
+
+  tasks:
+    - name: Running APT Update && Upgrade
+      apt:
+        upgrade: "no"
+        update_cache: yes
+        force_apt_get: yes
+        cache_valid_time: 3600
+    - synchronize:
+        src: "/home/ubuntu/{{ app_location }}/"
+        dest: "/home/ubuntu/{{ app_destination }}/"
+    - name: Pulling MongoDB Key
+      apt_key:
+        url: https://www.mongodb.org/static/pgp/server-3.2.asc
+        state: present
+    - name: Adding MongoDB Repository to source list
+      apt_repository:
+        repo: deb http://repo.mongodb.org/apt/ubuntu xenial/mongodb-org/3.2 multiverse
+        state: present
+        filename: "mongodb-org-3.2"
+        update_cache: yes
+    - name: Installing MongoDB
+      apt:
+        name: mongodb-org=3.2.20
+        state: present
+    - name: Copying custom configuration file
+      copy:
+        src: "/home/ubuntu/{{ app_destination }}/config_files/mongod.conf"
+        dest: "/etc/"
+        remote_src: yes
+    - name: Starting MongoDB Service
+      service:
+        name: mongod
+        state: started
+        enabled: yes
